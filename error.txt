@@ -1,0 +1,55 @@
+   Compiling finalproject v0.1.0 (/cardinal/homework/spring2022/cs410/finalproject)
+warning: unused imports: `InputCallbackInfo`, `OutputCallbackInfo`
+ --> src/main.rs:5:24
+  |
+5 | use cpal::{SampleRate, OutputCallbackInfo, InputCallbackInfo};
+  |                        ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unnecessary parentheses around `while` condition
+  --> src/main.rs:87:11
+   |
+87 |     while (index < len) {
+   |           ^           ^
+   |
+   = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+   |
+87 -     while (index < len) {
+87 +     while index < len {
+   | 
+
+error[E0631]: type mismatch in closure arguments
+   --> src/main.rs:29:27
+    |
+29  |     let in_stream = input.build_input_stream(
+    |                           ^^^^^^^^^^^^^^^^^^ expected signature of `for<'r, 's> fn(&'r [_], &'s InputCallbackInfo) -> _`
+30  |         &input_config.config(),
+31  |         move |data: &mut [i16], _: &_|{
+    |         ------------------------------ found signature of `for<'r, 's> fn(&'r mut [i16], &'s _) -> _`
+    |
+note: required by a bound in `build_input_stream`
+   --> /cardinal/.cargo/registry/src/github.com-1ecc6299db9ec823/cpal-0.13.5/src/traits.rs:126:12
+    |
+126 |         D: FnMut(&[T], &InputCallbackInfo) + Send + 'static,
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `build_input_stream`
+
+error[E0631]: type mismatch in closure arguments
+   --> src/main.rs:42:28
+    |
+42  |     let out_stream = input.build_input_stream(
+    |                            ^^^^^^^^^^^^^^^^^^ expected signature of `for<'r, 's> fn(&'r [_], &'s InputCallbackInfo) -> _`
+43  |         &output_config.config(),
+44  |         move |data: &mut [i16], _: &_|{
+    |         ------------------------------ found signature of `for<'r, 's> fn(&'r mut [i16], &'s _) -> _`
+    |
+note: required by a bound in `build_input_stream`
+   --> /cardinal/.cargo/registry/src/github.com-1ecc6299db9ec823/cpal-0.13.5/src/traits.rs:126:12
+    |
+126 |         D: FnMut(&[T], &InputCallbackInfo) + Send + 'static,
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `build_input_stream`
+
+For more information about this error, try `rustc --explain E0631`.
+warning: `finalproject` (bin "finalproject") generated 2 warnings
+error: could not compile `finalproject` due to 2 previous errors; 2 warnings emitted
