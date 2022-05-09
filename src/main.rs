@@ -89,7 +89,7 @@ fn main() {
                 
                 for (mut idx, val) in indata.iter().enumerate() {
                     if idx > data.len() - 1 { idx = data.len() - 1; }
-                    data[idx] = *val / 100;
+                    data[idx] = *val;
                 }
                 std::mem::drop(buf);
             },
@@ -132,6 +132,7 @@ fn decode(data: &mut Vec<u8>) -> (u16, u16) {
     let packet_num: u16 = u16::from_le_bytes(data[2..4].try_into().unwrap());
     data.drain(0..4);
     data.drain((length as usize)..data.len());
+    data.reverse();
     (length, packet_num)
 }
 
