@@ -1,9 +1,12 @@
 #![feature(vec_into_raw_parts)]
+#![allow(unused_must_use)]
+#![allow(unused_variables)]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{InputCallbackInfo, OutputCallbackInfo, SampleRate};
+use cpal::{SampleRate};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 use structopt::StructOpt;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /*
 Current issue: not all data is being transmitted
@@ -13,20 +16,21 @@ then playback thread grabs only the samples it needs
 and writes zero of not enough available.
 */
 
+/*fn void() {
+    //let (sender, recv) = std::sync::mpsc::channel();
+
+}*/
+
 #[derive(StructOpt)]
 struct Args {}
 // this will be a stupid simple implementation
 fn main() {
-    let mut buffer = Arc::new(Mutex::new(Vec::new()));
+    let buffer = Arc::new(Mutex::new(Vec::new()));
     let mut server = UdpSocket::bind("0.0.0.0:6432").unwrap();
-    let mut client = UdpSocket::bind("0.0.0.0:3232").unwrap();
+    let client = UdpSocket::bind("0.0.0.0:3232").unwrap();
     let host = cpal::default_host();
     let output = host.default_output_device().unwrap();
     let input = host.default_input_device().unwrap();
-    let mut data = Vec::with_capacity(96_000 * 100);
-    unsafe {
-        data.set_len(96_000 * 100);
-    }
     let mut packet_num = 1;
 
     let output_config = output
@@ -46,13 +50,12 @@ fn main() {
     println!("input config: {:?}", input_config);
 
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6432);
-    send_packet(&mut packet_num, addr, &client, &mut data);
 
     let in_stream = input
         .build_input_stream(
             &input_config.config(),
             move |data: &[i16], _| unsafe {
-                let mut vec = data.to_vec();
+                let vec = data.to_vec();
                 let (ptr, len, cap) = vec.into_raw_parts();
                 let mut outvec: Vec<u8> = Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2);
                 send_packet(&mut packet_num, addr, &client, &mut outvec);
@@ -68,6 +71,7 @@ fn main() {
             &output_config.config(),
             move |data: &mut [i16], _: &_| {
                 let mut buf = cloned_buf.lock().unwrap();
+                //println!("buf len: {}, buf extra: {}", buf.len(), buf.len() - data.len());
                 let indata = if buf.len() < data.len() {
                     let len = buf.len();
                     let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
@@ -78,13 +82,16 @@ fn main() {
                     }
                     newbuf
                 }else{
-                    buf.drain(0..data.len()).collect::<Vec<i16>>()
+                    let start = buf.len() - data.len();
+                    let end = buf.len();
+                    buf.drain(start..end).collect::<Vec<i16>>()
                 };
-                println!("indata len: {}, data len: {}", indata.len(), data.len());
-                println!("indata: {:?}", indata);
-                for (idx, val) in indata.iter().enumerate() {
+                
+                for (mut idx, val) in indata.iter().enumerate() {
+                    if idx > data.len() - 1 { idx = data.len() - 1; }
                     data[idx] = *val / 100;
                 }
+                std::mem::drop(buf);
             },
             move |err| {
                 panic!("{}", err);
@@ -96,20 +103,25 @@ fn main() {
     println!("data len: {:?}", back.len());
     back.extend_from_slice(&recv_data(&mut server));
     println!("data len: {:?}", back.len());*/
-    in_stream.play();
-    out_stream.play();
+    in_stream.play().unwrap();
+    out_stream.play().unwrap();
     
     loop {
         let mut readdata = recv_data(&mut server);
         println!("readdata length: {}", readdata.len());
-        let (mut length, mut num) = decode(&mut readdata);
-        println!("decoded length: {}", length);
-        let mut indata: Vec<i16> = unsafe {
+        let (_length, num) = decode(&mut readdata);
+        let start = SystemTime::now();
+        let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+        println!("packet num: {} recv at: {}", num, since_the_epoch.as_millis() as u128);
+        let indata: Vec<i16> = unsafe {
             let (ptr, len, cap) = readdata.into_raw_parts();
             Vec::from_raw_parts(ptr as *mut i16, len / 2, cap / 2)
         };
         let mut buf = buffer.lock().unwrap();
         buf.extend_from_slice(&indata);
+        std::mem::drop(buf);
     }
 }
 
@@ -141,7 +153,7 @@ fn send_packet(packet_num: &mut u16, addr: SocketAddr, socket: &UdpSocket, data:
     println!("sending packet of length: {}", data.len());
     let mut index = 0;
     let len = data.len();
-    while (index < len) {
+    while index < len {
         let pack_num = packet_num.to_be_bytes();
         let end = if 48_000 > data.len() {
             data.len()
@@ -156,6 +168,12 @@ fn send_packet(packet_num: &mut u16, addr: SocketAddr, socket: &UdpSocket, data:
         // so the header is at the front of the vector
         send_data.reverse();
         index += end;
+        let start = SystemTime::now();
+        let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
+        println!("packet num: {} sent at: {:?}", packet_num, since_the_epoch.as_millis() as u128);
         socket.send_to(&send_data.as_slice(), addr).unwrap();
 
         *packet_num = (*packet_num) + 1;
@@ -164,7 +182,7 @@ fn send_packet(packet_num: &mut u16, addr: SocketAddr, socket: &UdpSocket, data:
 
 fn recv_data(socket: &mut UdpSocket) -> Vec<u8> {
     let mut buf: [u8; 48004] = [0; 48004];
-    let (mut size, mut target) = socket.recv_from(&mut buf).unwrap();
+    let (size, target) = socket.recv_from(&mut buf).unwrap();
     /*if (target == *addr && size <= 48004) {
         return buf.to_vec();
     }
