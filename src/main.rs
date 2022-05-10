@@ -7,6 +7,17 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 use structopt::StructOpt;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::PathBuf;
+
+
+pub fn compress(value: i16) -> i16 {
+    let scalar: f32 = 3276.7;
+    if value < 0 {
+        -1 * (f32::log10(value as f32 * -1.0) * scalar) as i16
+    }else{
+        (f32::log10(value as f32) * scalar) as i16
+    }
+}
 
 /*
 Current issue: not all data is being transmitted
@@ -22,11 +33,21 @@ and writes zero of not enough available.
 }*/
 
 #[derive(StructOpt)]
-struct Args {}
+struct Args {
+    #[structopt(short, long)]
+    file: Option<PathBuf>,
+    /// remote peer to connect to
+    #[structopt(short, long)]
+    remote: SocketAddr,
+    /// local address to bind to
+    #[structopt(short, long)]
+    local: SocketAddr,
+}
 // this will be a stupid simple implementation
 fn main() {
+    let args = Args::from_args();
     let buffer = Arc::new(Mutex::new(Vec::new()));
-    let mut server = UdpSocket::bind("0.0.0.0:6432").unwrap();
+    let mut server = UdpSocket::bind(&args.local).unwrap();
     let client = UdpSocket::bind("0.0.0.0:3232").unwrap();
     let host = cpal::default_host();
     let output = host.default_output_device().unwrap();
@@ -46,10 +67,8 @@ fn main() {
         .next()
         .unwrap();
 
-    println!("output config: {:?}", output_config);
-    println!("input config: {:?}", input_config);
 
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6432);
+    let addr = args.remote.clone(); //SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 218, 219, 149)), 6432);
 
     let in_stream = input
         .build_input_stream(
@@ -71,7 +90,6 @@ fn main() {
             &output_config.config(),
             move |data: &mut [i16], _: &_| {
                 let mut buf = cloned_buf.lock().unwrap();
-                //println!("buf len: {}, buf extra: {}", buf.len(), buf.len() - data.len());
                 let indata = if buf.len() < data.len() {
                     let len = buf.len();
                     let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
@@ -89,7 +107,7 @@ fn main() {
                 
                 for (mut idx, val) in indata.iter().enumerate() {
                     if idx > data.len() - 1 { idx = data.len() - 1; }
-                    data[idx] = *val;
+                    data[idx] = compress(*val);
                 }
                 std::mem::drop(buf);
             },
@@ -104,11 +122,11 @@ fn main() {
     back.extend_from_slice(&recv_data(&mut server));
     println!("data len: {:?}", back.len());*/
     in_stream.play().unwrap();
-    out_stream.play().unwrap();
+    //out_stream.play().unwrap();
     
     loop {
         let mut readdata = recv_data(&mut server);
-        println!("readdata length: {}", readdata.len());
+        //println!("readdata length: {}", readdata.len());
         let (_length, num) = decode(&mut readdata);
         let start = SystemTime::now();
         let since_the_epoch = start
