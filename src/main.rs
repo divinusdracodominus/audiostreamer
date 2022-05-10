@@ -42,6 +42,8 @@ struct Args {
     /// local address to bind to
     #[structopt(short, long)]
     local: SocketAddr,
+    //#[structopt(short, long)]
+    //mode: String,
 }
 // this will be a stupid simple implementation
 fn main() {
@@ -52,7 +54,7 @@ fn main() {
     let host = cpal::default_host();
     let output = host.default_output_device().unwrap();
     let input = host.default_input_device().unwrap();
-    let mut packet_num = 1;
+    let mut packet_num: u32 = 1;
 
     let output_config = output
         .supported_output_configs()
@@ -70,6 +72,27 @@ fn main() {
 
     let addr = args.remote.clone(); //SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 218, 219, 149)), 6432);
 
+    if let Some(file) = args.file {
+        let mut wav_reader = hound::WavReader::open(&file).unwrap();
+        let mut vecs: Vec<Vec<u8>> = Vec::new();
+        let mut current_vec: Vec<i16> = Vec::new();
+        for (idx, sample) in wav_reader.samples::<i16>().enumerate() {
+            current_vec.push(sample.unwrap());
+            if idx >= 1500 {
+                let outvec: Vec<u8> = unsafe {
+                    let len = current_vec.len();
+                    let (ptr, len, cap) = current_vec.drain(0..len).collect::<Vec<i16>>().into_raw_parts();
+                    Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2)
+                };
+                vecs.push(outvec);
+            }
+        }
+        for mut vec in vecs.into_iter() {
+            send_packet(&mut packet_num, addr, &client, &mut vec);
+        }
+
+    }else{
+
     let in_stream = input
         .build_input_stream(
             &input_config.config(),
@@ -84,6 +107,8 @@ fn main() {
             },
         )
         .unwrap();
+        in_stream.play();
+    }
     let cloned_buf = buffer.clone();
     let out_stream = input
         .build_output_stream(
@@ -121,7 +146,7 @@ fn main() {
     println!("data len: {:?}", back.len());
     back.extend_from_slice(&recv_data(&mut server));
     println!("data len: {:?}", back.len());*/
-    in_stream.play().unwrap();
+    //in_stream.play().unwrap();
     //out_stream.play().unwrap();
     
     loop {
@@ -145,10 +170,10 @@ fn main() {
 
 // returns (length, packet_number) draining
 // them from the vector
-fn decode(data: &mut Vec<u8>) -> (u16, u16) {
+fn decode(data: &mut Vec<u8>) -> (u16, u32) {
     let length: u16 = u16::from_le_bytes(data[0..2].try_into().unwrap());
-    let packet_num: u16 = u16::from_le_bytes(data[2..4].try_into().unwrap());
-    data.drain(0..4);
+    let packet_num: u32 = u32::from_le_bytes(data[2..6].try_into().unwrap());
+    data.drain(0..6);
     data.drain((length as usize)..data.len());
     data.reverse();
     (length, packet_num)
@@ -168,7 +193,7 @@ impl Header {
     }
 }
 
-fn send_packet(packet_num: &mut u16, addr: SocketAddr, socket: &UdpSocket, data: &mut Vec<u8>) {
+fn send_packet(packet_num: &mut u32, addr: SocketAddr, socket: &UdpSocket, data: &mut Vec<u8>) {
     println!("sending packet of length: {}", data.len());
     let mut index = 0;
     let len = data.len();
