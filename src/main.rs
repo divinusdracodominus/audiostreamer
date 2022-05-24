@@ -68,8 +68,16 @@ fn main() {
         .next()
         .unwrap();
 
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 48_000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
     let addr = args.remote.clone(); //SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 218, 219, 149)), 6432);
 
+    let mut writer = Arc::new(Mutex::new(hound::WavWriter::create("sine.wav", spec).unwrap()));
+    let mut sec_writer = writer.clone();
     if let Some(file) = args.file {
         let mut wav_reader = hound::WavReader::open(&file).unwrap();
         let mut vecs: Vec<Vec<u8>> = Vec::new();
@@ -91,6 +99,7 @@ fn main() {
         for mut vec in vecs.into_iter() {
             send_packet(&mut packet_num, addr, &client, &mut vec);
         }
+        std::process::exit(0);
     } else {
         let in_stream = input
             .build_input_stream(
@@ -114,6 +123,9 @@ fn main() {
             &output_config.config(),
             move |data: &mut [i16], _: &_| {
                 let mut buf = cloned_buf.lock().unwrap();
+                let mut file = writer.lock().unwrap();
+                println!("buffer length: {}", buf.len());
+                
                 let indata = if buf.len() < data.len() {
                     let len = buf.len();
                     let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
@@ -134,6 +146,7 @@ fn main() {
                         idx = data.len() - 1;
                     }
                     data[idx] = compress(*val);
+                    file.write_sample(*val).unwrap();
                 }
                 std::mem::drop(buf);
             },
@@ -152,6 +165,7 @@ fn main() {
     let mut playing = false;
     out_stream.pause().unwrap();
     loop {
+        sec_writer.lock().unwrap().flush();
         let mut readdata = recv_data(&mut server);
         //println!("readdata length: {}", readdata.len());
         let (_length, num, time_val) = decode(&mut readdata);
