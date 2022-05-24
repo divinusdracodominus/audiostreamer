@@ -70,7 +70,7 @@ fn main() {
 
     let spec = hound::WavSpec {
         channels: 1,
-        sample_rate: 48_000,
+        sample_rate: 44_100,
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
