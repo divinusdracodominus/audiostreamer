@@ -58,7 +58,7 @@ fn main() {
     let output_config = output
         .supported_output_configs()
         .expect("failed to get output configs")
-        .map(|c| c.with_sample_rate(SampleRate(48000)))
+        .map(|c| c.with_sample_rate(SampleRate(44100)))
         .next()
         .unwrap();
     let input_config = input
@@ -80,6 +80,7 @@ fn main() {
     let mut sec_writer = writer.clone();
     if let Some(file) = args.file {
         let mut wav_reader = hound::WavReader::open(&file).unwrap();
+        println!("spec: {:?}", wav_reader.spec());
         let mut vecs: Vec<Vec<u8>> = Vec::new();
         let mut current_vec: Vec<i16> = Vec::new();
         let mut count = 0;
