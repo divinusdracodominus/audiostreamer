@@ -176,13 +176,15 @@ fn main() {
 // returns (length, packet_number) draining
 // them from the vector
 fn decode(data: &mut Vec<u8>) -> (u16, u32) {
-    let length: u16 = u16::from_le_bytes(data[0..2].try_into().unwrap());
-    let packet_num: u32 = u32::from_le_bytes(data[2..6].try_into().unwrap());
+    let size = std::mem::size_of::<u128>();
     let time_val: u128 = u128::from_le_bytes(
-        data[6..(6 + std::mem::size_of::<u128>())]
+        data[0..size]
             .try_into()
             .unwrap(),
     );
+    let length: u16 = u16::from_le_bytes(data[size..size+2].try_into().unwrap());
+    let packet_num: u32 = u32::from_le_bytes(data[size+2..size+6].try_into().unwrap());
+    
     data.drain(0..(6 + std::mem::size_of::<u128>()));
     data.drain((length as usize)..data.len());
     data.reverse();
