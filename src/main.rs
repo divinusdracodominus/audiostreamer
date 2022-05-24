@@ -5,7 +5,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleRate;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use structopt::StructOpt;
 
@@ -17,19 +17,6 @@ pub fn compress(value: i16) -> i16 {
         (f32::log10(value as f32) * scalar) as i16
     }
 }
-
-/*
-Current issue: not all data is being transmitted
-Solution: have a thread shared buffer, one thread
-receives from the network and writes to it
-then playback thread grabs only the samples it needs
-and writes zero of not enough available.
-*/
-
-/*fn void() {
-    //let (sender, recv) = std::sync::mpsc::channel();
-
-}*/
 
 #[derive(StructOpt)]
 struct Args {
@@ -76,8 +63,12 @@ fn main() {
     };
     let addr = args.remote.clone(); //SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 218, 219, 149)), 6432);
 
-    let mut writer = Arc::new(Mutex::new(hound::WavWriter::create("sine.wav", spec).unwrap()));
+    let mut writer = Arc::new(Mutex::new(
+        hound::WavWriter::create("sine.wav", spec).unwrap(),
+    ));
     let mut sec_writer = writer.clone();
+    let mut playing = Arc::new(AtomicBool::new(false));
+    let mut arc_play = playing.clone();
     if let Some(file) = args.file {
         let mut wav_reader = hound::WavReader::open(&file).unwrap();
         println!("spec: {:?}", wav_reader.spec());
@@ -130,29 +121,31 @@ fn main() {
                 let mut file = writer.lock().unwrap();
                 println!("buffer length: {}", buf.len());
                 
-                let indata = if buf.len() < data.len() {
-                    let len = buf.len();
-                    let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
-                    let mut idx = buf.len();
-                    /*while idx < data.len() {
-                        newbuf.push(0);
-                        idx += 1;
-                    }*/
-                    newbuf
-                } else {
-                    let start = 0;
-                    let end = data.len();
-                    buf.drain(start..end).collect::<Vec<i16>>()
-                };
+                if arc_play.load(Ordering::Acquire) {
+                    let indata = if buf.len() < data.len() {
+                        let len = buf.len();
+                        let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
+                        let mut idx = buf.len();
+                        /*while idx < data.len() {
+                            newbuf.push(0);
+                            idx += 1;
+                        }*/
+                        newbuf
+                    } else {
+                        let start = 0;
+                        let end = data.len();
+                        buf.drain(start..end).collect::<Vec<i16>>()
+                    };
 
-                for (mut idx, val) in indata.iter().enumerate() {
-                    if idx > data.len() - 1 {
-                        idx = data.len() - 1;
+                    for (mut idx, val) in indata.iter().enumerate() {
+                        if idx > data.len() - 1 {
+                            idx = data.len() - 1;
+                        }
+                        data[idx] = compress(*val);
+                        file.write_sample(*val).unwrap();
                     }
-                    data[idx] = compress(*val);
-                    file.write_sample(*val).unwrap();
+                    file.flush().unwrap();
                 }
-                file.flush().unwrap();
                 std::mem::drop(buf);
             },
             move |err| {
@@ -161,14 +154,8 @@ fn main() {
         )
         .unwrap();
 
-    /*let mut back = recv_data(&mut server);
-    println!("data len: {:?}", back.len());
-    back.extend_from_slice(&recv_data(&mut server));
-    println!("data len: {:?}", back.len());*/
-    //in_stream.play().unwrap();
-    //out_stream.play().unwrap();
-    let mut playing = false;
     out_stream.pause().unwrap();
+    let mut play = false;
     loop {
         let mut readdata = recv_data(&mut server);
         //println!("readdata length: {}", readdata.len());
@@ -177,7 +164,7 @@ fn main() {
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
-        
+
         let indata: Vec<i16> = unsafe {
             let (ptr, len, cap) = readdata.into_raw_parts();
             Vec::from_raw_parts(ptr as *mut i16, len / 2, cap / 2)
@@ -187,12 +174,14 @@ fn main() {
         // these two conditionals are doing nothing
         // thus the program doesn't wait to have an initial
         // buffer before playing audio
-        if buf.len() >= 9600 && !playing {
-            playing = true;
+        if buf.len() >= 9600 && !play {
+            playing.store(true, Ordering::Release);
+            play = true;
             out_stream.play().unwrap();
         }
-        if buf.len() < 9600 && playing {
-            playing = false;
+        if buf.len() < 9600 && play {
+            playing.store(true, Ordering::Release);
+            play = false;
             out_stream.pause().unwrap();
         }
         std::mem::drop(buf);
@@ -203,32 +192,14 @@ fn main() {
 // them from the vector
 fn decode(data: &mut Vec<u8>) -> (u16, u32, u128) {
     let size = std::mem::size_of::<u128>();
-    let time_val: u128 = u128::from_le_bytes(
-        data[0..size]
-            .try_into()
-            .unwrap(),
-    );
-    let length: u16 = u16::from_le_bytes(data[size..size+2].try_into().unwrap());
-    let packet_num: u32 = u32::from_le_bytes(data[size+2..size+6].try_into().unwrap());
-    
+    let time_val: u128 = u128::from_le_bytes(data[0..size].try_into().unwrap());
+    let length: u16 = u16::from_le_bytes(data[size..size + 2].try_into().unwrap());
+    let packet_num: u32 = u32::from_le_bytes(data[size + 2..size + 6].try_into().unwrap());
+
     data.drain(0..(6 + size));
     data.drain((length as usize)..data.len());
     data.reverse();
     (length, packet_num, time_val)
-}
-
-pub struct Header {
-    data_len: u16,
-    packet_num: u16,
-}
-
-impl Header {
-    pub fn to_raw(&self) -> Vec<u8> {
-        let mut outvec: Vec<u8> = Vec::with_capacity(4);
-        outvec.extend_from_slice(&self.data_len.to_be_bytes());
-        outvec.extend_from_slice(&self.packet_num.to_be_bytes());
-        outvec
-    }
 }
 
 fn send_packet(packet_num: &mut u32, addr: SocketAddr, socket: &UdpSocket, data: &mut Vec<u8>) {
@@ -267,18 +238,5 @@ fn send_packet(packet_num: &mut u32, addr: SocketAddr, socket: &UdpSocket, data:
 fn recv_data(socket: &mut UdpSocket) -> Vec<u8> {
     let mut buf: [u8; 48006] = [0; 48006];
     let (size, target) = socket.recv_from(&mut buf).unwrap();
-    /*if (target == *addr && size <= 48004) {
-        return buf.to_vec();
-    }
-    if (target == *addr && size > 48004) {
-        panic!("packet fragmentation");
-    }
-    while (*addr != target) {
-        (size, target) = socket.recv_from(&mut buf).unwrap();
-        if size != 48004 {
-            panic!("packet fragmentation");
-        }
-    }*/
-    // I really should grab size data
     buf.to_vec()
 }
