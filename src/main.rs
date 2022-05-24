@@ -140,8 +140,8 @@ fn main() {
                     }*/
                     newbuf
                 } else {
-                    let start = buf.len() - data.len();
-                    let end = buf.len();
+                    let start = 0;
+                    let end = data.len();
                     buf.drain(start..end).collect::<Vec<i16>>()
                 };
 
