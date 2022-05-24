@@ -184,13 +184,16 @@ fn main() {
         };
         let mut buf = buffer.lock().unwrap();
         buf.extend_from_slice(&indata);
+        // these two conditionals are doing nothing
+        // thus the program doesn't wait to have an initial
+        // buffer before playing audio
         if buf.len() >= 9600 && !playing {
             playing = true;
-            out_stream.play();
+            out_stream.play().unwrap();
         }
         if buf.len() < 9600 && playing {
             playing = false;
-            out_stream.pause();
+            out_stream.pause().unwrap();
         }
         std::mem::drop(buf);
     }
