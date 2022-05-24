@@ -82,9 +82,10 @@ fn main() {
         let mut wav_reader = hound::WavReader::open(&file).unwrap();
         let mut vecs: Vec<Vec<u8>> = Vec::new();
         let mut current_vec: Vec<i16> = Vec::new();
+        let mut count = 0;
         for (idx, sample) in wav_reader.samples::<i16>().enumerate() {
             current_vec.push(sample.unwrap());
-            if idx >= 1500 {
+            if count >= (16_000) {
                 let outvec: Vec<u8> = unsafe {
                     let len = current_vec.len();
                     let (ptr, len, cap) = current_vec
@@ -94,7 +95,9 @@ fn main() {
                     Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2)
                 };
                 vecs.push(outvec);
+                count = 0;
             }
+            count += 1;
         }
         for mut vec in vecs.into_iter() {
             send_packet(&mut packet_num, addr, &client, &mut vec);
