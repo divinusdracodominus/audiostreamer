@@ -225,7 +225,7 @@ fn send_packet(packet_num: &mut u32, addr: SocketAddr, socket: &UdpSocket, data:
 }
 
 fn recv_data(socket: &mut UdpSocket) -> Vec<u8> {
-    let mut buf: [u8; 48004] = [0; 48004];
+    let mut buf: [u8; 48006] = [0; 48006];
     let (size, target) = socket.recv_from(&mut buf).unwrap();
     /*if (target == *addr && size <= 48004) {
         return buf.to_vec();
