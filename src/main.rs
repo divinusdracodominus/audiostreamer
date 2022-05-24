@@ -106,7 +106,7 @@ fn main() {
                 },
             )
             .unwrap();
-        in_stream.play();
+        in_stream.pause().unwrap();
     }
     let cloned_buf = buffer.clone();
     let out_stream = output
@@ -149,7 +149,8 @@ fn main() {
     println!("data len: {:?}", back.len());*/
     //in_stream.play().unwrap();
     //out_stream.play().unwrap();
-
+    let mut playing = false;
+    out_stream.pause().unwrap();
     loop {
         let mut readdata = recv_data(&mut server);
         //println!("readdata length: {}", readdata.len());
@@ -165,6 +166,14 @@ fn main() {
         };
         let mut buf = buffer.lock().unwrap();
         buf.extend_from_slice(&indata);
+        if buf.len() >= 9600 && !playing {
+            playing = true;
+            out_stream.play();
+        }
+        if buf.len() < 9600 && playing {
+            playing = false;
+            out_stream.pause();
+        }
         std::mem::drop(buf);
     }
 }
