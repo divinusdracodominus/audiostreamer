@@ -109,7 +109,7 @@ fn main() {
         in_stream.play();
     }
     let cloned_buf = buffer.clone();
-    let out_stream = input
+    let out_stream = output
         .build_output_stream(
             &output_config.config(),
             move |data: &mut [i16], _: &_| {
@@ -118,10 +118,10 @@ fn main() {
                     let len = buf.len();
                     let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
                     let mut idx = buf.len();
-                    while idx < data.len() {
+                    /*while idx < data.len() {
                         newbuf.push(0);
                         idx += 1;
-                    }
+                    }*/
                     newbuf
                 } else {
                     let start = buf.len() - data.len();
@@ -153,16 +153,12 @@ fn main() {
     loop {
         let mut readdata = recv_data(&mut server);
         //println!("readdata length: {}", readdata.len());
-        let (_length, num) = decode(&mut readdata);
+        let (_length, num, time_val) = decode(&mut readdata);
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
-        println!(
-            "packet num: {} recv at: {}",
-            num,
-            since_the_epoch.as_millis() as u128
-        );
+        
         let indata: Vec<i16> = unsafe {
             let (ptr, len, cap) = readdata.into_raw_parts();
             Vec::from_raw_parts(ptr as *mut i16, len / 2, cap / 2)
@@ -175,7 +171,7 @@ fn main() {
 
 // returns (length, packet_number) draining
 // them from the vector
-fn decode(data: &mut Vec<u8>) -> (u16, u32) {
+fn decode(data: &mut Vec<u8>) -> (u16, u32, u128) {
     let size = std::mem::size_of::<u128>();
     let time_val: u128 = u128::from_le_bytes(
         data[0..size]
@@ -185,10 +181,10 @@ fn decode(data: &mut Vec<u8>) -> (u16, u32) {
     let length: u16 = u16::from_le_bytes(data[size..size+2].try_into().unwrap());
     let packet_num: u32 = u32::from_le_bytes(data[size+2..size+6].try_into().unwrap());
     
-    data.drain(0..(6 + std::mem::size_of::<u128>()));
+    data.drain(0..(6 + size));
     data.drain((length as usize)..data.len());
     data.reverse();
-    (length, packet_num)
+    (length, packet_num, time_val)
 }
 
 pub struct Header {
