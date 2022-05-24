@@ -152,6 +152,7 @@ fn main() {
                     data[idx] = compress(*val);
                     file.write_sample(*val).unwrap();
                 }
+                file.flush().unwrap();
                 std::mem::drop(buf);
             },
             move |err| {
@@ -169,7 +170,6 @@ fn main() {
     let mut playing = false;
     out_stream.pause().unwrap();
     loop {
-        sec_writer.lock().unwrap().flush();
         let mut readdata = recv_data(&mut server);
         //println!("readdata length: {}", readdata.len());
         let (_length, num, time_val) = decode(&mut readdata);
