@@ -2,19 +2,18 @@
 #![allow(unused_must_use)]
 #![allow(unused_variables)]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleRate};
+use cpal::SampleRate;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
-use std::sync::{Arc, Mutex};
-use structopt::StructOpt;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::PathBuf;
-
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+use structopt::StructOpt;
 
 pub fn compress(value: i16) -> i16 {
     let scalar: f32 = 3276.7;
     if value < 0 {
         -1 * (f32::log10(value as f32 * -1.0) * scalar) as i16
-    }else{
+    } else {
         (f32::log10(value as f32) * scalar) as i16
     }
 }
@@ -69,7 +68,6 @@ fn main() {
         .next()
         .unwrap();
 
-
     let addr = args.remote.clone(); //SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 218, 219, 149)), 6432);
 
     if let Some(file) = args.file {
@@ -81,7 +79,10 @@ fn main() {
             if idx >= 1500 {
                 let outvec: Vec<u8> = unsafe {
                     let len = current_vec.len();
-                    let (ptr, len, cap) = current_vec.drain(0..len).collect::<Vec<i16>>().into_raw_parts();
+                    let (ptr, len, cap) = current_vec
+                        .drain(0..len)
+                        .collect::<Vec<i16>>()
+                        .into_raw_parts();
                     Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2)
                 };
                 vecs.push(outvec);
@@ -90,23 +91,21 @@ fn main() {
         for mut vec in vecs.into_iter() {
             send_packet(&mut packet_num, addr, &client, &mut vec);
         }
-
-    }else{
-
-    let in_stream = input
-        .build_input_stream(
-            &input_config.config(),
-            move |data: &[i16], _| unsafe {
-                let vec = data.to_vec();
-                let (ptr, len, cap) = vec.into_raw_parts();
-                let mut outvec: Vec<u8> = Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2);
-                send_packet(&mut packet_num, addr, &client, &mut outvec);
-            },
-            move |err| {
-                panic!("{}", err);
-            },
-        )
-        .unwrap();
+    } else {
+        let in_stream = input
+            .build_input_stream(
+                &input_config.config(),
+                move |data: &[i16], _| unsafe {
+                    let vec = data.to_vec();
+                    let (ptr, len, cap) = vec.into_raw_parts();
+                    let mut outvec: Vec<u8> = Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2);
+                    send_packet(&mut packet_num, addr, &client, &mut outvec);
+                },
+                move |err| {
+                    panic!("{}", err);
+                },
+            )
+            .unwrap();
         in_stream.play();
     }
     let cloned_buf = buffer.clone();
@@ -124,14 +123,16 @@ fn main() {
                         idx += 1;
                     }
                     newbuf
-                }else{
+                } else {
                     let start = buf.len() - data.len();
                     let end = buf.len();
                     buf.drain(start..end).collect::<Vec<i16>>()
                 };
-                
+
                 for (mut idx, val) in indata.iter().enumerate() {
-                    if idx > data.len() - 1 { idx = data.len() - 1; }
+                    if idx > data.len() - 1 {
+                        idx = data.len() - 1;
+                    }
                     data[idx] = compress(*val);
                 }
                 std::mem::drop(buf);
@@ -148,16 +149,20 @@ fn main() {
     println!("data len: {:?}", back.len());*/
     //in_stream.play().unwrap();
     //out_stream.play().unwrap();
-    
+
     loop {
         let mut readdata = recv_data(&mut server);
         //println!("readdata length: {}", readdata.len());
         let (_length, num) = decode(&mut readdata);
         let start = SystemTime::now();
         let since_the_epoch = start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-        println!("packet num: {} recv at: {}", num, since_the_epoch.as_millis() as u128);
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        println!(
+            "packet num: {} recv at: {}",
+            num,
+            since_the_epoch.as_millis() as u128
+        );
         let indata: Vec<i16> = unsafe {
             let (ptr, len, cap) = readdata.into_raw_parts();
             Vec::from_raw_parts(ptr as *mut i16, len / 2, cap / 2)
@@ -173,7 +178,12 @@ fn main() {
 fn decode(data: &mut Vec<u8>) -> (u16, u32) {
     let length: u16 = u16::from_le_bytes(data[0..2].try_into().unwrap());
     let packet_num: u32 = u32::from_le_bytes(data[2..6].try_into().unwrap());
-    data.drain(0..6);
+    let time_val: u128 = u128::from_le_bytes(
+        data[6..(6 + std::mem::size_of::<u128>())]
+            .try_into()
+            .unwrap(),
+    );
+    data.drain(0..(6 + std::mem::size_of::<u128>()));
     data.drain((length as usize)..data.len());
     data.reverse();
     (length, packet_num)
@@ -207,17 +217,19 @@ fn send_packet(packet_num: &mut u32, addr: SocketAddr, socket: &UdpSocket, data:
         let l = end as u16;
 
         let mut send_data = data.drain(0..end).collect::<Vec<u8>>();
+        let start = SystemTime::now();
+        let since_the_epoch: u128 = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
         send_data.extend_from_slice(&pack_num);
         send_data.extend_from_slice(&l.to_be_bytes());
+        send_data.extend_from_slice(&since_the_epoch.to_be_bytes());
         // so the header is at the front of the vector
         send_data.reverse();
         index += end;
-        let start = SystemTime::now();
-        let since_the_epoch = start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
 
-        println!("packet num: {} sent at: {:?}", packet_num, since_the_epoch.as_millis() as u128);
+        println!("packet num: {} sent at: {:?}", packet_num, since_the_epoch);
         socket.send_to(&send_data.as_slice(), addr).unwrap();
 
         *packet_num = (*packet_num) + 1;
