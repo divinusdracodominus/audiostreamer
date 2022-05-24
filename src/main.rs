@@ -86,7 +86,7 @@ fn main() {
         let mut count = 0;
         for (idx, sample) in wav_reader.samples::<i16>().enumerate() {
             current_vec.push(sample.unwrap());
-            if count >= (16_000) {
+            if count >= (1_400) {
                 let outvec: Vec<u8> = unsafe {
                     let len = current_vec.len();
                     let (ptr, len, cap) = current_vec
