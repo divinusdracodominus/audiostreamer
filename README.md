@@ -16,4 +16,3 @@
 2. Reversed entire wav file
 3. Incorrect sample rate. (48000 but wav file was 44100)
 4. Too much fragmentation (sending packets of 2 bytes at a time)
- 
