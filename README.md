@@ -1,5 +1,27 @@
 # Audio Streaming Library
 
+## History:
+The main codes history is located in
+https://github.com/divinusdracodominus/audiostreamer
+
+## LICENSE:
+MIT free to use for any purpose or any reason.
+
+## How to build
+```
+cargo run --release
+```
+
+## how to run
+```
+./target/release/finalproject
+```
+
+### Arguments:
+1. --local: local address to listen on including port
+2. --remote: remote address to connect to including port
+3. --file: optional arg to play wav file over network
+
 ## Implemented Features
 1. Sending UDP packets
 2. Microphone Capture (Through CPAL)
