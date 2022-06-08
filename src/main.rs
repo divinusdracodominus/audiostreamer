@@ -80,6 +80,7 @@ fn main() {
     let mut arc_play = playing.clone();
 
     let cloned_buf = buffer.clone();
+    //let mut in_stream = None;
 
     if let Some(file) = args.file {
         std::thread::spawn(move || {
@@ -114,23 +115,24 @@ fn main() {
             }
         });
     } else {
-        let in_stream = input
-            .build_input_stream(
-                &input_config.config(),
-                move |data: &[i16], _| unsafe {
-                    let vec = data.to_vec();
-                    let (ptr, len, cap) = vec.into_raw_parts();
-                    let mut outvec: Vec<u8> = Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2);
-                    send_packet(&mut packet_num, addr, &client, &mut outvec);
-                },
-                move |err| {
-                    panic!("{}", err);
-                },
-            )
-            .unwrap();
-        in_stream.pause().unwrap();
+        let stream = input
+        .build_input_stream(
+            &input_config.config(),
+            move |data: &[i16], _| unsafe {
+                let vec = data.to_vec();
+                let (ptr, len, cap) = vec.into_raw_parts();
+                let mut outvec: Vec<u8> = Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2);
+                println!("about to send packet");
+                send_packet(&mut packet_num, addr, &client, &mut outvec);
+            },
+            move |err| {
+                panic!("{}", err);
+            },
+        )
+        .unwrap();
+        stream.play();
+        std::mem::forget(stream);
     }
-
     let out_stream = output
         .build_output_stream(
             &output_config.config(),
