@@ -1,10 +1,12 @@
 #![feature(vec_into_raw_parts)]
+#![feature(unix_socket_abstract)]
 #![allow(unused_must_use)]
 #![allow(unused_variables)]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleRate;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
-use std::path::PathBuf;
+use std::os::unix::net::UnixDatagram;
+use std::path::{PathBuf, Path};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -40,6 +42,10 @@ fn main() {
     let buffer = Arc::new(Mutex::new(Vec::new()));
     let mut server = UdpSocket::bind(&args.local).unwrap();
     let client = UdpSocket::bind("0.0.0.0:3232").unwrap();
+    // used for testing purposes only 
+    //let mut u_server =
+        UnixDatagram::bind(std::env::current_dir().unwrap().join("unixsocket.socket")).unwrap();
+    //let u_client = UnixDatagram::bind(std::env::current_dir().unwrap().join("unixclient.socket")).unwrap();
     let host = cpal::default_host();
     let output = host.default_output_device().unwrap();
     let input = host.default_input_device().unwrap();
@@ -99,9 +105,13 @@ fn main() {
                 count += 1;
             }
             for mut vec in vecs.into_iter() {
-                send_packet(&mut packet_num, addr, &client, &mut vec);
+                send_packet(
+                    &mut packet_num,
+                    addr,
+                    &client,
+                    &mut vec,
+                );
             }
-            
         });
     } else {
         let in_stream = input
@@ -129,30 +139,30 @@ fn main() {
                 let mut file = writer.lock().unwrap();
 
                 //if arc_play.load(Ordering::Acquire) {
-                    println!("buffer length: {}", buf.len());
-                    let indata = if buf.len() < data.len() {
-                        let len = buf.len();
-                        let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
-                        let mut idx = buf.len();
-                        /*while idx < data.len() {
-                            newbuf.push(0);
-                            idx += 1;
-                        }*/
-                        newbuf
-                    } else {
-                        let start = 0;
-                        let end = data.len();
-                        buf.drain(start..end).collect::<Vec<i16>>()
-                    };
+                println!("buffer length: {}", buf.len());
+                let indata = if buf.len() < data.len() {
+                    let len = buf.len();
+                    let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
+                    let mut idx = buf.len();
+                    /*while idx < data.len() {
+                        newbuf.push(0);
+                        idx += 1;
+                    }*/
+                    newbuf
+                } else {
+                    let start = 0;
+                    let end = data.len();
+                    buf.drain(start..end).collect::<Vec<i16>>()
+                };
 
-                    for (mut idx, val) in indata.iter().enumerate() {
-                        if idx > data.len() - 1 {
-                            idx = data.len() - 1;
-                        }
-                        data[idx] = compress(*val);
-                        file.write_sample(*val).unwrap();
+                for (mut idx, val) in indata.iter().enumerate() {
+                    if idx > data.len() - 1 {
+                        idx = data.len() - 1;
                     }
-                    file.flush().unwrap();
+                    data[idx] = *val;
+                    file.write_sample(*val).unwrap();
+                }
+                file.flush().unwrap();
                 //}
                 std::mem::drop(buf);
             },
@@ -243,7 +253,46 @@ fn send_packet(packet_num: &mut u32, addr: SocketAddr, socket: &UdpSocket, data:
     }
 }
 
+fn u_send_packet(packet_num: &mut u32, addr: &Path, socket: &UnixDatagram, data: &mut Vec<u8>) {
+    println!("sending packet of length: {}", data.len());
+    let mut index = 0;
+    let len = data.len();
+    while index < len {
+        let pack_num = packet_num.to_be_bytes();
+        let end = if 48_000 > data.len() {
+            data.len()
+        } else {
+            48_000
+        };
+        let l = end as u16;
+
+        let mut send_data = data.drain(0..end).collect::<Vec<u8>>();
+        let start = SystemTime::now();
+        let since_the_epoch: u128 = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
+        send_data.extend_from_slice(&pack_num);
+        send_data.extend_from_slice(&l.to_be_bytes());
+        send_data.extend_from_slice(&since_the_epoch.to_be_bytes());
+        // so the header is at the front of the vector
+        send_data.reverse();
+        index += end;
+
+        println!("packet num: {} sent at: {:?}", packet_num, since_the_epoch);
+        socket.send_to(&send_data.as_slice(), addr).unwrap();
+
+        *packet_num = (*packet_num) + 1;
+    }
+}
+
 fn recv_data(socket: &mut UdpSocket) -> Vec<u8> {
+    let mut buf: [u8; 48006] = [0; 48006];
+    let (size, target) = socket.recv_from(&mut buf).unwrap();
+    buf.to_vec()
+}
+
+fn u_recv_data(socket: &mut UnixDatagram) -> Vec<u8> {
     let mut buf: [u8; 48006] = [0; 48006];
     let (size, target) = socket.recv_from(&mut buf).unwrap();
     buf.to_vec()
