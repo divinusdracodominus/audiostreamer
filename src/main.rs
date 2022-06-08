@@ -44,7 +44,7 @@ fn main() {
     let client = UdpSocket::bind("0.0.0.0:3232").unwrap();
     // used for testing purposes only 
     //let mut u_server =
-        UnixDatagram::bind(std::env::current_dir().unwrap().join("unixsocket.socket")).unwrap();
+    //    UnixDatagram::bind(std::env::current_dir().unwrap().join("unixsocket.socket")).unwrap();
     //let u_client = UnixDatagram::bind(std::env::current_dir().unwrap().join("unixclient.socket")).unwrap();
     let host = cpal::default_host();
     let output = host.default_output_device().unwrap();
