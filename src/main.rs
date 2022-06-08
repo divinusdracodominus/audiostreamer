@@ -5,7 +5,10 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleRate;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 use structopt::StructOpt;
 
@@ -69,32 +72,37 @@ fn main() {
     let mut sec_writer = writer.clone();
     let mut playing = Arc::new(AtomicBool::new(false));
     let mut arc_play = playing.clone();
+
+    let cloned_buf = buffer.clone();
+
     if let Some(file) = args.file {
-        let mut wav_reader = hound::WavReader::open(&file).unwrap();
-        println!("spec: {:?}", wav_reader.spec());
-        let mut vecs: Vec<Vec<u8>> = Vec::new();
-        let mut current_vec: Vec<i16> = Vec::new();
-        let mut count = 0;
-        for (idx, sample) in wav_reader.samples::<i16>().enumerate() {
-            current_vec.push(sample.unwrap());
-            if count >= (1_400) {
-                let outvec: Vec<u8> = unsafe {
-                    let len = current_vec.len();
-                    let (ptr, len, cap) = current_vec
-                        .drain(0..len)
-                        .collect::<Vec<i16>>()
-                        .into_raw_parts();
-                    Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2)
-                };
-                vecs.push(outvec);
-                count = 0;
+        std::thread::spawn(move || {
+            let mut wav_reader = hound::WavReader::open(&file).unwrap();
+            println!("spec: {:?}", wav_reader.spec());
+            let mut vecs: Vec<Vec<u8>> = Vec::new();
+            let mut current_vec: Vec<i16> = Vec::new();
+            let mut count = 0;
+            for (idx, sample) in wav_reader.samples::<i16>().enumerate() {
+                current_vec.push(sample.unwrap());
+                if count >= (1_400) {
+                    let outvec: Vec<u8> = unsafe {
+                        let len = current_vec.len();
+                        let (ptr, len, cap) = current_vec
+                            .drain(0..len)
+                            .collect::<Vec<i16>>()
+                            .into_raw_parts();
+                        Vec::from_raw_parts(ptr as *mut u8, len * 2, cap * 2)
+                    };
+                    vecs.push(outvec);
+                    count = 0;
+                }
+                count += 1;
             }
-            count += 1;
-        }
-        for mut vec in vecs.into_iter() {
-            send_packet(&mut packet_num, addr, &client, &mut vec);
-        }
-        std::process::exit(0);
+            for mut vec in vecs.into_iter() {
+                send_packet(&mut packet_num, addr, &client, &mut vec);
+            }
+            
+        });
     } else {
         let in_stream = input
             .build_input_stream(
@@ -112,16 +120,16 @@ fn main() {
             .unwrap();
         in_stream.pause().unwrap();
     }
-    let cloned_buf = buffer.clone();
+
     let out_stream = output
         .build_output_stream(
             &output_config.config(),
             move |data: &mut [i16], _: &_| {
                 let mut buf = cloned_buf.lock().unwrap();
                 let mut file = writer.lock().unwrap();
-                println!("buffer length: {}", buf.len());
-                
-                if arc_play.load(Ordering::Acquire) {
+
+                //if arc_play.load(Ordering::Acquire) {
+                    println!("buffer length: {}", buf.len());
                     let indata = if buf.len() < data.len() {
                         let len = buf.len();
                         let mut newbuf = buf.drain(0..len).collect::<Vec<i16>>();
@@ -145,7 +153,7 @@ fn main() {
                         file.write_sample(*val).unwrap();
                     }
                     file.flush().unwrap();
-                }
+                //}
                 std::mem::drop(buf);
             },
             move |err| {
@@ -174,7 +182,7 @@ fn main() {
         // these two conditionals are doing nothing
         // thus the program doesn't wait to have an initial
         // buffer before playing audio
-        if buf.len() >= 9600 && !play {
+        /*if buf.len() >= 9600 && !play {
             playing.store(true, Ordering::Release);
             play = true;
             out_stream.play().unwrap();
@@ -183,7 +191,7 @@ fn main() {
             playing.store(true, Ordering::Release);
             play = false;
             out_stream.pause().unwrap();
-        }
+        }*/
         std::mem::drop(buf);
     }
 }
