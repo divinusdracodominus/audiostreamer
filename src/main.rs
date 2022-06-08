@@ -131,7 +131,7 @@ fn main() {
         )
         .unwrap();
         stream.play();
-        std::mem::forget(stream);
+        std::mem::forget(stream);  
     }
     let out_stream = output
         .build_output_stream(
