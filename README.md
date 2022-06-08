@@ -35,6 +35,7 @@ cargo build --release
 2. Fully secured RSA + AES backed encryption. (please see github.com/divinusdracodominus/verifyudp
 3. Interface for selecting input and output devices
 4. Playing to multiple output devices at once/multiple networked machines at once (with a given time delay).
+5. Compress data sent over the network.
 
 ## Troubles encountered in debugging
 1. Forgot to reverse vector back to proper order. (resolved)
