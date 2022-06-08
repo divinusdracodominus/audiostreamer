@@ -9,7 +9,7 @@ MIT free to use for any purpose or any reason.
 
 ## How to build
 ```
-cargo run --release
+cargo build --release
 ```
 
 ## how to run
@@ -27,14 +27,19 @@ cargo run --release
 2. Microphone Capture (Through CPAL)
 3. Speaker Playback (Through CPAL)
 4. Sending data over UDP socket including defragmentation
+5. Playing wav files over the network live.
+6. Playing mic input over the network live.
 
 ## Planned Features
-1. Support for playing wav files, over the network.
-2. Embedable as an audio plugin, into alsa, jack, or pipewire.
-3. Fully secured RSA + AES backed encryption. (please see github.com/divinusdracodominus/verifyudp
+1. Embedable as an audio plugin, into alsa, jack, or pipewire.
+2. Fully secured RSA + AES backed encryption. (please see github.com/divinusdracodominus/verifyudp
+3. Interface for selecting input and output devices
+4. Playing to multiple output devices at once/multiple networked machines at once (with a given time delay).
 
 ## Troubles encountered in debugging
-1. Forgot to reverse vector back to proper order
-2. Reversed entire wav file
+1. Forgot to reverse vector back to proper order. (resolved)
+2. Reversed entire wav file. (resolved)
 3. Incorrect sample rate. (48000 but wav file was 44100)
-4. Too much fragmentation (sending packets of 2 bytes at a time)
+4. Too much fragmentation (sending packets of 2 bytes at a time) (resolved)
+5. compression algorithim causing distortions (resolved)
+6. feedback from mic.
